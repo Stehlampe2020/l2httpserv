@@ -84,6 +84,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         ))
 
 if __name__ == '__main__':
+    '''Do this if the module is called as a script.'''
     with socketserver.ThreadingTCPServer(('localhost', 8080), L2HTTPServ, bind_and_activate=False) as server:
         server.allow_reuse_address = True
         server.server_bind()
