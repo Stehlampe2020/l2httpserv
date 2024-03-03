@@ -57,6 +57,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             ))
 
     def handle_GET(self):
+        '''Handle GET requests'''
         while not self.data.endswith(HTTP_LINE_BREAK*2):
             self.data += self.rfile.readline()+HTTP_LINE_BREAK
 
