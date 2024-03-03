@@ -9,6 +9,7 @@ true:bool = True
 import sys, socketserver
 class L2HTTPServ(socketserver.StreamRequestHandler):
     def assemble_response(self, *lines:bytes|str):
+        '''Assembles the given lines with HTTP line breaks'''
         return HTTP_LINE_BREAK.join(
             (
                 line                        # Give back the original line
