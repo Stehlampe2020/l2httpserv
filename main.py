@@ -19,6 +19,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             for line in lines               # Do this for every given line.
         )+HTTP_LINE_BREAK
     def handle(self):
+        '''Base handler method'''
         self.data:bytes = self.rfile.readline()+HTTP_LINE_BREAK
 
         if self.data.startswith(b'GET /kill'):
