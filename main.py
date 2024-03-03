@@ -71,6 +71,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             "Oops, looks like L2HTTPServ isn't ready yet!"
         ))
     def handle_POST(self):
+        '''Handle POST requests'''
 
         #TODO: Implement meaningful responses!
 
