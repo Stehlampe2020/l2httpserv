@@ -6,10 +6,10 @@ NaN:float = float('nan')
 Infinity:float = float('inf')
 false:bool = False
 true:bool = True
-import sys, socketserver
+import sys, socketserver, ssl
 class L2HTTPServ(socketserver.StreamRequestHandler):
     def assemble_response(self, *lines:bytes|str):
-        '''Assembles the given lines with HTTP line breaks'''
+        """Assembles the given lines with HTTP line breaks"""
         return HTTP_LINE_BREAK.join(
             (
                 line                        # Give back the original line
@@ -19,7 +19,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             for line in lines               # Do this for every given line.
         )+HTTP_LINE_BREAK
     def handle(self):
-        '''Base handler method'''
+        """Base handler method"""
         self.data:bytes = self.rfile.readline()+HTTP_LINE_BREAK
 
         if self.data.startswith(b'GET /kill'):
@@ -57,7 +57,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             ))
 
     def handle_GET(self):
-        '''Handle GET requests'''
+        """Handle GET requests"""
         while not self.data.endswith(HTTP_LINE_BREAK*2):
             self.data += self.rfile.readline()+HTTP_LINE_BREAK
 
@@ -71,7 +71,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             "Oops, looks like L2HTTPServ isn't ready yet!"
         ))
     def handle_POST(self):
-        '''Handle POST requests'''
+        """Handle POST requests"""
 
         #TODO: Implement meaningful responses!
 
@@ -84,8 +84,11 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         ))
 
 if __name__ == '__main__':
-    '''Do this if the module is called as a script.'''
+    """Do this if the module is called as a script."""
     with socketserver.ThreadingTCPServer(('localhost', 8080), L2HTTPServ, bind_and_activate=False) as server:
+        if 'ssl' in sys.argv:
+            #server.socket = ssl.wrap_socket(server.socket, keyfile='./keyfile.key', certfile='./certfile.cert', server_side=True, ssl_version=ssl.PROTOCOL_TLSv1_2, ca_certs=None, do_handshake_on_connect=True, suppress_ragged_eofs=True, ciphers='ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK')
+            ssl.SSLContext(protocol=ssl.PROTOCOL_SSLv23).wrap_socket(server.socket, server_side=True, do_handshake_on_connect=True, suppress_ragged_eofs=True)
         server.allow_reuse_address = True
         server.server_bind()
         server.server_activate()
