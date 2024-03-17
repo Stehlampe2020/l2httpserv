@@ -59,7 +59,20 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
         self.data:bytes = self.rfile.readline()+HTTP_LINE_BREAK
 
-        self.req_type, self.req_path, self.req_ver = self.data.replace(HTTP_LINE_BREAK, b'').decode('ascii').split(' ')
+        try:
+            self.req_type, self.req_path, self.req_ver = self.data.replace(HTTP_LINE_BREAK, b'').decode('ascii').split(' ')
+        except ValueError:
+            self.wfile.write(self.__assemble_response(
+                'HTTP/1.1 400 Bad Request',
+                'Server: L2HTTPServ',
+                'Content-type: text/plain; charset=utf-8',
+                '',
+                'L2HTTPServ cannot handle non-HTTP requests! (as the name implies)'
+            ))
+            if self.data==HTTP_LINE_BREAK:
+                return print(f'Incoming empty request from {self.client_address[0]}:{self.client_address[1]}; probably an unused predicted connection.')
+            else:
+                return print(f'Incoming request from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n    Header: {self.data}')
 
         print(f'Incoming {self.req_ver} request from {self.client_address[0]}:{self.client_address[1]}: {self.req_type} {self.req_path}')
 
@@ -96,10 +109,14 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
     def handle_unsupported_method(self):
         """Handle requests with an unsupported method"""
-        self.wfile.write(self.__assemble_response('HTTP/1.1 405 Unsupported method', f'Server: {type(self).__name__}',
-                                                  f'Allow: {", ".join(self.__implemented_methods)}',
-                                                  'Content-Type: text/plain; charset=utf-8', '',
-                                                  f'This server does not support {self.req_type} requests!'))
+        self.wfile.write(self.__assemble_response(
+            'HTTP/1.1 405 Unsupported method',
+            f'Server: {type(self).__name__}',
+            f'Allow: {", ".join(self.__implemented_methods)}',
+            'Content-Type: text/plain; charset=utf-8',
+            '',
+            f'This server does not support {self.req_type} requests!'
+        ))
 
     def __handle_GET(self):
         """Handle GET requests"""
@@ -110,7 +127,8 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             try:
                 with open('favicon.ico', 'rb') as favicon:
                     self.wfile.write(self.__assemble_response(
-                        'HTTP/1.1 200 OK', f'Server: {type(self).__name__}',
+                        'HTTP/1.1 200 OK',
+                        f'Server: {type(self).__name__}',
                         'Content-Type: image/vnd.microsoft.icon',
                         '',
                         favicon.read()
@@ -118,38 +136,58 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                     return
             except OSError:
                 self.wfile.write(self.__assemble_response(
-                    'HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
+                    'HTTP/1.1 404 Not Found',
+                    f'Server: {type(self).__name__}',
                     'Content-Type: text/plain; charset=utf-8',
                     '',
                     "The favicon could unfortunately not be found."
                 ))
                 return
-        elif self.req_path == '/.__l2httpserv.stop':
+        elif self.req_path.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters
             self.wfile.write(self.__assemble_response(
-                'HTTP/1.1 500 Server stopped', f'Server: {type(self).__name__}',
+                'HTTP/1.1 200 Server Stopped',
+                f'Server: {type(self).__name__}',
                 'Content-Type: text/plain; charset=utf-8',
                 '',
-                'Stopping server...'
+                'Stopped the server!'
             ))
             print(f'{self.client_address[0]} requested to stop the server!')
             self.server.shutdown()
             return
 
-        #TODO: Implement meaningful responses!
-
         self.wfile.write(self.__assemble_response(
-            'HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
-            'Content-Type: text/plain; charset=utf-8', '',
-            "Oops, looks like L2HTTPServ isn't ready yet!"
+            'HTTP/1.1 200 OK',
+            f'Server: {type(self).__name__}',
+            'Content-Type: text/html; charset=utf-8',
+            '',
+            """<!DOCTYPE html>
+            <html>
+                <head lang="en">
+                    <link rel="icon" href="/favicon.ico">
+                    <title>L2HTTPServ works!</title>
+                    <meta name="description" content="L2HTTPServ test page">
+                </head>
+                <body style="background-color:green;color:white;">
+                    <div style="position:fixed;top:0px;left:0px;bottom:0px;right:0px;background-color:rgba(0,0,0,0.5);backdrop-filter:blur(8px);">
+                        <fieldset style="color:white;background-color:green;position:fixed;top:50%;left:50%;max-height:100vh;max-width:100vw;transform:translate(-50%, -50%);border:3px double white;border-radius:8px;"><legend style="color:white;background-color:blue;border:1px solid white;border-radius:5px;">L2HTTPServ</legend>
+                            The example server works!<br>
+                            Now it's your turn to write some code that does useful things with this base HTTP server.<br>
+                            <br>
+                            <form method="GET" action="/.__l2httpserv.stop">
+                                <input type="hidden" name="doit" value="true">
+                                <input type="submit" value="Stop the server" style="color:white;background-color:blue;border:1px solid white;border-radius:3px;">
+                            </form>
+                        </fieldset>
+                    </div>
+                </body>
+            </html>""".replace("""
+            """, '\n') # Remove the extra indent depth.
         ))
+
     def __handle_POST(self):
         """Handle POST requests"""
 
-        #TODO: Implement meaningful responses!
-
-        self.wfile.write(self.__assemble_response('HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
-                                                  'Content-Type: text/plain; charset=utf-8', '',
-                                                  "Oops, looks like L2HTTPServ isn't ready yet!"))
+        self.__handle_GET() # The base server doesn't need to respond differently to POST requests than to GET requests, so literally just respond as if it was a GET request.
 
     def __handle_CONNECT(self):
         """Handle CONNECT requests"""
@@ -193,4 +231,11 @@ def init_server(req_handler, addr:str='localhost', port:int=8080, enable_ssl:boo
 
 if __name__ == '__main__':
     """Do this if the module is called as a script."""
-    init_server(L2HTTPServ, enable_ssl=('ssl' in sys.argv))
+    import argparse
+    argparser:argparse.ArgumentParser = argparse.ArgumentParser(
+        prog='L2HTTPServ',
+        description='A simple, dumb HTTP server written in Python3.',
+        epilog='L2HTTPServ is NOT production ready, keep that in mind. It\'s only intended to be used as a base class for custom HTTP servers like shown in the /examples directory in the GIT project.'
+    )
+    argparser.add_argument('-s', '--ssl', action='store_true')
+    init_server(L2HTTPServ, enable_ssl=(argparser.parse_args().ssl))
