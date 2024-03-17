@@ -60,7 +60,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         self.data:bytes = self.rfile.readline()+HTTP_LINE_BREAK
 
         try:
-            self.req_type, self.req_path, self.req_ver = self.data.replace(HTTP_LINE_BREAK, b'').decode('ascii').split(' ')
+            self.req_type, self.req_uri, self.req_ver = self.data.replace(HTTP_LINE_BREAK, b'').decode('ascii').split(' ')
         except ValueError:
             self.wfile.write(self.__assemble_response(
                 'HTTP/1.1 400 Bad Request',
@@ -74,7 +74,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             else:
                 return print(f'Incoming request from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n    Header: {self.data}')
 
-        print(f'Incoming {self.req_ver} request from {self.client_address[0]}:{self.client_address[1]}: {self.req_type} {self.req_path}')
+        print(f'Incoming {self.req_ver} request from {self.client_address[0]}:{self.client_address[1]}: {self.req_type} {self.req_uri}')
 
         match self.req_type:
             # The two most common ones are checked first to reduce computation time
@@ -123,7 +123,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         while not self.data.endswith(HTTP_LINE_BREAK*2):
             self.data += self.rfile.readline()+HTTP_LINE_BREAK
 
-        if self.req_path == '/favicon.ico':
+        if self.req_uri == '/favicon.ico':
             try:
                 with open('favicon.ico', 'rb') as favicon:
                     self.wfile.write(self.__assemble_response(
@@ -143,7 +143,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                     "The favicon could unfortunately not be found."
                 ))
                 return
-        elif self.req_path.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters
+        elif self.req_uri.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters
             self.wfile.write(self.__assemble_response(
                 'HTTP/1.1 200 Server Stopped',
                 f'Server: {type(self).__name__}',
