@@ -111,28 +111,37 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                 with open('favicon.ico', 'rb') as favicon:
                     self.wfile.write(self.__assemble_response(
                         'HTTP/1.1 200 OK', f'Server: {type(self).__name__}',
-                        'Content-Type: image/vnd.microsoft.icon', '',
+                        'Content-Type: image/vnd.microsoft.icon',
+                        '',
                         favicon.read()
                     ))
                     return
             except OSError:
-                self.wfile.write(self.__assemble_response('HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
-                                                          'Content-Type: text/plain; charset=utf-8', '',
-                                                          "The favicon could unfortunately not be found."))
+                self.wfile.write(self.__assemble_response(
+                    'HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
+                    'Content-Type: text/plain; charset=utf-8',
+                    '',
+                    "The favicon could unfortunately not be found."
+                ))
                 return
         elif self.req_path == '/.__l2httpserv.stop':
-            self.wfile.write(self.__assemble_response('HTTP/1.1 500 Server stopped', f'Server: {type(self).__name__}',
-                                                      'Content-Type: text/plain; charset=utf-8', '',
-                                                      'Stopping server...'))
+            self.wfile.write(self.__assemble_response(
+                'HTTP/1.1 500 Server stopped', f'Server: {type(self).__name__}',
+                'Content-Type: text/plain; charset=utf-8',
+                '',
+                'Stopping server...'
+            ))
             print(f'{self.client_address[0]} requested to stop the server!')
             self.server.shutdown()
             return
 
         #TODO: Implement meaningful responses!
 
-        self.wfile.write(self.__assemble_response('HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
-                                                  'Content-Type: text/plain; charset=utf-8', '',
-                                                  "Oops, looks like L2HTTPServ isn't ready yet!"))
+        self.wfile.write(self.__assemble_response(
+            'HTTP/1.1 404 Not Found', f'Server: {type(self).__name__}',
+            'Content-Type: text/plain; charset=utf-8', '',
+            "Oops, looks like L2HTTPServ isn't ready yet!"
+        ))
     def __handle_POST(self):
         """Handle POST requests"""
 
