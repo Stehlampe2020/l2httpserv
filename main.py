@@ -16,7 +16,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
     __response_data:dict[str, bytes|dict[bytes, bytes]] = {
         'head': b'HTTP/1.1 200 OK',
         'headers': {
-            b'Server': type(self).__name__.encode('ASCII'),
+            b'Server': b'L2HTTPServ',
             b'Content-type': b'text/plain; charset=utf-8'
         },
         'body': b''
