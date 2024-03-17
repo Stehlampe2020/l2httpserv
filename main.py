@@ -10,7 +10,39 @@ false:bool = False
 true:bool = True
 
 class L2HTTPServ(socketserver.StreamRequestHandler):
-    def assemble_response(self, *lines:bytes|str):
+    """Basic HTTP request handler"""
+    __implemented_methods:tuple[str, ...] = 'GET,POST'.split(',')
+
+    __response_data:dict[str, bytes|dict[bytes, bytes]] = {
+        'head': b'HTTP/1.1 200 OK',
+        'headers': {
+            b'Server': type(self).__name__.encode('ASCII'),
+            b'Content-type': b'text/plain; charset=utf-8'
+        },
+        'body': b''
+    }
+
+    def __response_send(self):
+        """Sends the response that has been built in self.__response_data"""
+        self.wfile.write(self.__assemble_response(
+            self.__response_data['head'],
+            *(hname+b': '+self.__response_data['headers'][hname] for hname in self.__response_data['headers']),
+            '',
+            self.__response_data['body']
+        ))
+
+    def __response_set_header(self, hname:str|bytes, hcont:str|bytes):
+        """Set a header's value"""
+        if hname in (':',b':'):
+            self.__response_data['head'] = hcont if type(hcont)==bytes else hcont.encode('ASCII')
+        else:
+            if type(hname)==str:
+                hname = hname.encode('ASCII')
+            if type(hcont)==str:
+                hcont = hcont.encode('UTF-8')
+            self.__response_data['headers'][hname] = hcont
+
+    def __assemble_response(self, *lines:bytes|str):
         """Assembles the given lines with HTTP line breaks"""
         return HTTP_LINE_BREAK.join(
             (
