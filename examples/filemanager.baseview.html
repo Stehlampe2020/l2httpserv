@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>L2HTTPFileManager</title>
+        <meta name="description" content="Web file manager based on L2HTTPServ">
+        <script id="mainJS">
+            document.addEventListener('DOMContentLoaded', ()=>{
+                //TODO: write this!
+            }, {once:true});
+        </script>
+        <style id="mainCSS">
+            /* BEGIN overlays etc.: */
+            .overlay {
+                position: fixed;
+                top: 0px;
+                left: 0px;
+                right: 0px;
+                bottom: 0px;
+                color: white;
+                background-color: rgba(0,0,0,0.5);
+                backdrop-filter: blur(8px);
+            }
+
+            .overlay-text {
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                color: white;
+                background-color: darkolivegreen;
+                border: 3px double white;
+                border-radius: 8px;
+            }
+
+            fieldset.overlay-text legend {
+                color: white;
+                background-color: blue;
+                padding: 3px;
+                border: 1px solid white;
+                border-radius: 5px;
+            }
+            /* END overlays etc. */
+
+            /* BEGIN Buttons and similar-looking elements: */
+            button, .button {
+                color: white;
+                background-color: blue;
+                text-decoration: none;
+                padding: 3px;
+                border: 1px solid white;
+                border-radius: 3px;
+            }
+
+            button:hover, .button:hover {
+                text-decoration: underline;
+            }
+
+            button:active, .button:active {
+                color: grey;
+                text-decoration: underline;
+            }
+
+            button:focused, .button:focused {
+                border-style: dotted;
+            }
+
+            button[disabled], .button[disabled] {
+                color: grey;
+                background-color: lightgrey;
+                border-color: grey;
+            }
+            /* END Buttons and similar-looking elements */
+        </style>
+    </head>
+    <body style="color:white;background-color:darkgreen;">
+        Test page!
+        <div class="overlay">
+            <fieldset class="overlay-text"><legend>Test page!</legend>
+                If you see this message as a floating box in the middle of your screen, then everything's working so far!<br>
+                <a class="button" href="/.__L2HTTPFileManager.shutdownServer">Stop the server!</a>
+            </fieldset>
+        </div>
+    </body>
+</html>
