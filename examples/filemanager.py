@@ -46,6 +46,17 @@ class HTTPFileManager(main.L2HTTPServ):
             self._response_data['body'] = b'Stopping server...'
             self._response_send()
             self._stop_server()
+        elif self._req_path == '/favicon.ico':
+            try:
+                with open('favicon.ico', 'rb') as favicon:
+                    self._response_data['body'] = favicon.read()
+                    self._response_set_header('Content-type', b'image/vnd.microsoft.icon')
+                    self._response_send()
+                    return
+            except OSError:
+                self._response_http_status(404)
+                self._response_data['body'] = b'The favicon could unfortunately not be loaded.'
+                return
         else:
             with open('examples/filemanager.baseview.html', 'r') as baseview:
                 self._response_http_status(200)
