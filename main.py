@@ -32,23 +32,107 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
     def __response_send(self):
         """Sends the response that has been built in self.__response_data"""
-        self.wfile.write(self.__assemble_response(
+        response:bytes = self.__assemble_response(
             self.__response_data['head'],
             *(hname+b': '+self.__response_data['headers'][hname] for hname in self.__response_data['headers']),
             '',
             self.__response_data['body']
-        ))
+        )
+        if self.__debug: print(f'Responding to request#{self._l2_req_id}: {response}')
+        self.wfile.write(response)
 
     def __response_set_header(self, hname:str|bytes, hcont:str|bytes):
         """Set a header's value"""
         if hname in (':',b':'):
             self.__response_data['head'] = hcont if type(hcont)==bytes else hcont.encode('ASCII')
+            if not re.match(b'HTTP\/[0-9]*\.[0-9]* [0-9]{3} .*', self.__response_data['head']):
+                self.__response_data['head'] = b'HTTP/1.1 '+self.__response_data['head']
         else:
             if type(hname)==str:
                 hname = hname.encode('ASCII')
             if type(hcont)==str:
                 hcont = hcont.encode('UTF-8')
             self.__response_data['headers'][hname] = hcont
+
+    def __response_http_status(self, status:int, msg:str|None=None):
+        """Set the response's HTTP ststus code"""
+        status_msgs:dict[int, str] = { # Messages according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
+            # Information responses
+            100: 'Continue',
+            101: 'Switching Protocols',
+            102: 'Processing',
+            103: 'Early Hints',
+            # Successsful responses
+            200: 'OK',
+            201: 'Created',
+            202: 'Accepted',
+            203: 'Non-Authoritative Information',
+            204: 'No Content',
+            205: 'Reset Content',
+            206: 'Partial Content',
+            207: 'Multi-Ststus',
+            208: 'Already Reported',
+            226: 'IM Used',
+            # Redirection messages
+            300: 'Multiple Choices',
+            301: 'Moved Permanently',
+            302: 'Found', # Previously: 'Moved Temporarily', which may still be seen out in the wild
+            303: 'See Other',
+            304: 'Not Modified',
+            305: 'Use Proxy', # Deprecated
+            306: 'Switch Proxy', # Usage abandoned
+            307: 'Temporary Redirect',
+            308: 'Permanent Redirect',
+            # Client error responses
+            400: 'Bad Request',
+            401: 'Unauthorized',
+            402: 'Payment Required',
+            403: 'Forbidden',
+            404: 'Not Found', # Probably the most famous HTTP response code, has gotten kind-of a meme status
+            405: 'Method Not Allowed',
+            406: 'Not Acceptable',
+            407: 'Proxy Authentication Required',
+            408: 'Request Timeout',
+            409: 'Conflict',
+            410: 'Gone',
+            411: 'Length Required', # Maybe use this to also get "Content-length" header for multipart/form-data?
+            412: 'Precondition Failed',
+            413: 'Payload Too Large',
+            414: 'URI Too Long',
+            415: 'Unsupported Media Type',
+            416: 'Range Not Satisfiable',
+            417: 'Expectation Failed',
+            418: "I'm a teapot", # Example: https://google.com/teapot
+            421: 'Misdirected Request',
+            422: 'Unprocessable Content',
+            423: 'Locked',
+            424: 'Failed Dependency',
+            425: 'Too Early',
+            426: 'Upgrade Required',
+            428: 'Precondition Required',
+            429: 'Too Many Requests', # Use this when implementing rate limiting
+            431: 'Request Header Fields Too Large',
+            451: 'Unavailable For Legal Reasons',
+            # Server error responses
+            500: 'Internal Server Error',
+            501: 'Not Implemented',
+            502: 'Bad Gateway',
+            503: 'Service Unavailable',
+            504: 'Gateway Timeout',
+            505: 'HTTP Version Not Supported', # Maybe return this when a client requests anything other than HTTP/1.1?
+            506: 'Variant Also Negotiates',
+            507: 'Insufficient Storage',
+            508: 'Loop Detected',
+            510: 'Not Extended',
+            511: 'Network Authentication Required' # Use this when using L2HTTPServ as a network landing page
+        }
+        def require_http_status_msg(status:int):
+            """Raises an error to notify the calling code that a ststus message is needed for the given status code."""
+            raise ValueError(f'No message defined for HTTP response code {status}!')
+        self.__response_set_header(
+            ':',
+            f'{status} {msg or (status_msgs[status] if status in status_msgs else require_http_status_msg(status))}'
+        )
 
     def __assemble_response(self, *lines:bytes|str):
         """Assembles the given lines with HTTP line breaks"""
@@ -74,13 +158,9 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             if not re.fullmatch(r'^HTTP\/[0-9]*\.[0-9]*$', self.__req_ver):
                 raise ValueError('Not an HTTP request!')
         except ValueError:
-            self.wfile.write(self.__assemble_response(
-                'HTTP/1.1 400 Bad Request',
-                'Server: L2HTTPServ',
-                'Content-type: text/plain; charset=utf-8',
-                '',
-                'L2HTTPServ cannot handle non-HTTP requests! (as the name implies)'
-            ))
+            self.__response_http_status(400)
+            self.__response_data['body'] = b'L2HTTPServ cannot handle non-HTTP requests! (as the name implies)'
+            self.__response_send()
             if self.__req_data==b'':
                 return print(f'Incoming empty request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}; probably an unused predicted connection.')
             else:
@@ -152,14 +232,10 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
     def __handle_unsupported_method(self):
         """Handle requests with an unsupported method"""
-        self.wfile.write(self.__assemble_response(
-            'HTTP/1.1 405 Unsupported method',
-            f'Server: {type(self).__name__}',
-            f'Allow: {", ".join(self.__implemented_methods)}',
-            'Content-Type: text/plain; charset=utf-8',
-            '',
-            f'This server does not support {self.__req_type} requests!'
-        ))
+        self.__response_http_status(405)
+        self.__response_set_header('Allow', ', '.join(self.__implemented_methods))
+        self.__response_data['body'] = f'This server does not support {self.__req_type} requests!'
+        self.__response_send()
 
     def __handle_GET(self):
         """Handle GET requests"""
@@ -167,63 +243,50 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         if self.__req_uri == '/favicon.ico':
             try:
                 with open('favicon.ico', 'rb') as favicon:
-                    self.wfile.write(self.__assemble_response(
-                        'HTTP/1.1 200 OK',
-                        f'Server: {type(self).__name__}',
-                        'Content-Type: image/vnd.microsoft.icon',
-                        '',
-                        favicon.read()
-                    ))
+                    self.__response_data['body'] = favicon.read()
+                    self.__response_set_header('Content-type', b'image/vnd.microsoft.icon')
+                    self.__response_send()
                     return
             except OSError:
-                self.wfile.write(self.__assemble_response(
-                    'HTTP/1.1 404 Not Found',
-                    f'Server: {type(self).__name__}',
-                    'Content-Type: text/plain; charset=utf-8',
-                    '',
-                    "The favicon could unfortunately not be loaded."
-                ))
+                self.__response_http_status(404)
+                self.__response_data['body'] = b'The favicon could unfortunately not be loaded.'
                 return
         elif self.__req_uri.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters (everything after ?)
-            self.wfile.write(self.__assemble_response(
-                'HTTP/1.1 200 Server Stopped',
-                f'Server: {type(self).__name__}',
-                'Content-Type: text/plain; charset=utf-8',
-                '',
-                'Stopped the server!'
-            ))
-            print(f'{self.client_address[0]} requested to stop the server!')
+            self.__response_http_status(200, 'Server Stopped')
+            self.__response_set_header('Content-type', 'text/plain; charset=utf-8') # Somehow this header is not reset foreach new request?
+            self.__response_data['body'] = b'Stopped the server!'
+            self.__response_send()
+            print(f'{self.client_address[0]} requested to stop the server!\nShutting down server...')
             self.server.shutdown()
             return
 
-        self.wfile.write(self.__assemble_response(
-            'HTTP/1.1 200 OK',
-            f'Server: {type(self).__name__}',
-            'Content-Type: text/html; charset=utf-8',
-            '',
-            """<!DOCTYPE html>
-            <html>
-                <head lang="en">
-                    <link rel="icon" href="/favicon.ico">
-                    <title>L2HTTPServ works!</title>
-                    <meta name="description" content="L2HTTPServ test page">
-                </head>
-                <body style="background-color:green;color:white;">
-                    <div style="position:fixed;top:0px;left:0px;bottom:0px;right:0px;background-color:rgba(0,0,0,0.5);backdrop-filter:blur(8px);">
-                        <fieldset style="color:white;background-color:green;position:fixed;top:50%;left:50%;max-height:100vh;max-width:100vw;transform:translate(-50%, -50%);border:3px double white;border-radius:8px;"><legend style="color:white;background-color:blue;border:1px solid white;border-radius:5px;">L2HTTPServ</legend>
-                            The example server works!<br>
-                            Now it's your turn to write some code that does useful things with this base HTTP server.<br>
-                            <br>
-                            <form method="GET" action="/.__l2httpserv.stop">
-                                <input type="hidden" name="doit" value="true">
-                                <input type="submit" value="Stop the server" style="color:white;background-color:blue;border:1px solid white;border-radius:3px;">
-                            </form>
-                        </fieldset>
-                    </div>
-                </body>
-            </html>""".replace("""
-            """, '\n') # Remove the extra indent depth.
-        ))
+        self.__response_http_status(200)
+        self.__response_set_header('Server', type(self).__name__)
+        self.__response_set_header('Content-type', b'text/html; charset=utf-8')
+        self.__response_data['body'] = """<!DOCTYPE html>
+        <html>
+            <head lang="en">
+                <link rel="icon" href="/favicon.ico">
+                <title>L2HTTPServ works!</title>
+                <meta name="description" content="L2HTTPServ test page">
+            </head>
+            <body style="background-color:green;color:white;">
+                <div style="position:fixed;top:0px;left:0px;bottom:0px;right:0px;background-color:rgba(0,0,0,0.5);backdrop-filter:blur(8px);">
+                    <fieldset style="color:white;background-color:green;position:fixed;top:50%;left:50%;max-height:100vh;max-width:100vw;transform:translate(-50%, -50%);border:3px double white;border-radius:8px;"><legend style="color:white;background-color:blue;border:1px solid white;border-radius:5px;">L2HTTPServ</legend>
+                        The example server works!<br>
+                        Now it's your turn to write some code that does useful things with this base HTTP server.<br>
+                        <br>
+                        <form method="GET" action="/.__l2httpserv.stop">
+                            <input type="hidden" name="doit" value="true">
+                            <input type="submit" value="Stop the server" style="color:white;background-color:blue;border:1px solid white;border-radius:3px;">
+                        </form>
+                    </fieldset>
+                </div>
+            </body>
+        </html>""".replace("""
+        """, '\n') # Remove the extra indent depth.
+        self.__response_set_header('Content-length', str(len(self.__response_data['body'])))
+        self.__response_send()
 
     def __handle_POST(self):
         """Handle POST requests"""
@@ -256,7 +319,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
     def __handle_TRACE(self):
         """Handle TRACE requests"""
-        self.__response_set_header(':', b'200 OK')
+        self.__response_http_status(200)
         self.__response_set_header('Server', type(self).__name__)
         self.__response_set_header('Content-type', 'message/http')
         self.__response_set_header('Content-length', str(len(self.__req_data)))
@@ -265,15 +328,23 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
 def init_server(req_handler, addr:str='localhost', port:int=8080, enable_ssl:bool=True, sslhostname:str|None='localhost', certfile:str|None='certfile.crt', keyfile:str|None='keyfile.key', certpass:str|None=None):
     with socketserver.ThreadingTCPServer((addr, port), req_handler, bind_and_activate=False) as server:
-        server.allow_reuse_address = True
-        server.timeout = 333
-        if enable_ssl:
-            context:ssl.SSLContext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-            context.load_cert_chain(certfile=certfile, keyfile=keyfile, password=certpass)
-            server.socket = context.wrap_socket(sock=server.socket, server_hostname=sslhostname)
-        server.server_bind()
-        server.server_activate()
-        server.serve_forever()
+        try:
+            server.allow_reuse_address = True
+            server.timeout = 333
+            if enable_ssl:
+                context:ssl.SSLContext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                context.load_cert_chain(certfile=certfile, keyfile=keyfile, password=certpass)
+                server.socket = context.wrap_socket(sock=server.socket, server_hostname=sslhostname)
+            server.server_bind()
+            server.server_activate()
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print('Shutting down server...')
+            server.shutdown()
+            return print('Server stopped from CLI!\n')
+        except not SystemExit as exc:
+            server.shutdown()
+            return print(f'\nThe server hit an unrecoverable error state and needs to be stopped:\n{traceback.format_exception(exc)}')
 
 if __name__ == '__main__':
     """Do this if the module is called as a script."""
