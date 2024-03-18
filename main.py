@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import socket, traceback, sys, socketserver, ssl
+import socket, traceback, sys, socketserver, re, ssl
 
 # Constants:
 HTTP_LINE_BREAK = '\r\n'.encode('ASCII')
@@ -11,7 +11,15 @@ true:bool = True
 
 class L2HTTPServ(socketserver.StreamRequestHandler):
     """Basic HTTP request handler"""
+
+    __debug:bool = False # If this is enabled, a lot more information about the received requests will be printed to the console.
+    _l2_req_id:int = 0
     __implemented_methods:tuple[str, ...] = 'GET,POST'.split(',')
+
+    def __init__(self, *args, **kwargs):
+        """Initialize the L2HTTPServ request"""
+        super().__init__(*args, **kwargs)
+        type(self)._l2_req_id += 1
 
     __response_data:dict[str, bytes|dict[bytes, bytes]] = {
         'head': b'HTTP/1.1 200 OK',
@@ -57,10 +65,14 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         """Base handler method"""
         #self.server.socket.accept()
 
-        self.data:bytes = self.rfile.readline()+HTTP_LINE_BREAK
+        self.__req_enc:str = 'ASCII' # May be overridden by the client
+
+        self.__req_data:bytes = self.rfile.readline()
 
         try:
-            self.req_type, self.req_uri, self.req_ver = self.data.replace(HTTP_LINE_BREAK, b'').decode('ascii').split(' ')
+            self.__req_type, self.__req_uri, self.__req_ver = self.__req_data.split(HTTP_LINE_BREAK, 1)[0].decode('ascii').split(' ')
+            if not re.fullmatch(r'^HTTP\/[0-9]*\.[0-9]*$', self.__req_ver):
+                raise ValueError('Not an HTTP request!')
         except ValueError:
             self.wfile.write(self.__assemble_response(
                 'HTTP/1.1 400 Bad Request',
@@ -69,14 +81,45 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                 '',
                 'L2HTTPServ cannot handle non-HTTP requests! (as the name implies)'
             ))
-            if self.data==HTTP_LINE_BREAK:
-                return print(f'Incoming empty request from {self.client_address[0]}:{self.client_address[1]}; probably an unused predicted connection.')
+            if self.__req_data==b'':
+                return print(f'Incoming empty request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}; probably an unused predicted connection.')
             else:
-                return print(f'Incoming request from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n    Header: {self.data}')
+                return print(f'Incoming request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n -> Header: {self.__req_data}')
 
-        print(f'Incoming {self.req_ver} request from {self.client_address[0]}:{self.client_address[1]}: {self.req_type} {self.req_uri}')
+        print(f'Incoming {self.__req_ver} request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: {self.__req_type} {self.__req_uri}')
 
-        match self.req_type:
+        while not self.__req_data.endswith(HTTP_LINE_BREAK * 2): # Read all headers (separated by an empty line from the content)
+            self.__req_data += self.rfile.readline()
+
+        #for line in self.__req_data.split(HTTP_LINE_BREAK)[1:]: # Exclude the first line
+        raw_headers:dict[str, bytes] = {
+            line.split(b': ', 1)[0].decode(self.__req_enc):
+                line.split(b': ', 1)[1]
+            for line in self.__req_data.split(HTTP_LINE_BREAK)[1:]
+            if line
+        }
+
+        if self.__debug: print(f' -> (#{self._l2_req_id}) {self.__req_data=}\n -> (#{self._l2_req_id}) {raw_headers=}') #debug
+
+        self.__req_headers:dict[str, str] = {}
+        for header in raw_headers:
+            if header.lower()=='content-type':
+                enc_match:re.Match = re.search(r'charset=([^\s;]+)', raw_headers[header], re.IGNORECASE)
+                if enc_match:
+                    self.__req_enc = enc_match.group(1) or 'ASCII' # In case a falsey value is returned, set the encoding back to ASCII
+            self.__req_headers[header.lower()] = raw_headers[header].decode(self.__req_enc)
+
+        if self.__debug: print(f' -> (#{self._l2_req_id}) {self.__req_headers=}') #debug
+
+        if 'content-length' in self.__req_headers:
+            self.__req_body:bytes = self.rfile.read(int(self.__req_headers['content-length']))
+            self.__req_data += self.__req_body
+        else:
+            self.__req_body:bytes = b''
+
+        if self.__debug: print(f' -> (#{self._l2_req_id}) {self.__req_body=}') #debug
+
+        match self.__req_type:
             # The two most common ones are checked first to reduce computation time
             case 'GET':
                 self.__handle_GET()
@@ -103,11 +146,11 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                     try:
                         self[f'__handle_{method}']()
                     except:
-                        self.handle_unsupported_method()
+                        self.__handle_unsupported_method()
                 else:
-                    self.handle_unsupported_method()
+                    self.__handle_unsupported_method()
 
-    def handle_unsupported_method(self):
+    def __handle_unsupported_method(self):
         """Handle requests with an unsupported method"""
         self.wfile.write(self.__assemble_response(
             'HTTP/1.1 405 Unsupported method',
@@ -115,15 +158,13 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             f'Allow: {", ".join(self.__implemented_methods)}',
             'Content-Type: text/plain; charset=utf-8',
             '',
-            f'This server does not support {self.req_type} requests!'
+            f'This server does not support {self.__req_type} requests!'
         ))
 
     def __handle_GET(self):
         """Handle GET requests"""
-        while not self.data.endswith(HTTP_LINE_BREAK*2):
-            self.data += self.rfile.readline()+HTTP_LINE_BREAK
 
-        if self.req_uri == '/favicon.ico':
+        if self.__req_uri == '/favicon.ico':
             try:
                 with open('favicon.ico', 'rb') as favicon:
                     self.wfile.write(self.__assemble_response(
@@ -140,10 +181,10 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                     f'Server: {type(self).__name__}',
                     'Content-Type: text/plain; charset=utf-8',
                     '',
-                    "The favicon could unfortunately not be found."
+                    "The favicon could unfortunately not be loaded."
                 ))
                 return
-        elif self.req_uri.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters
+        elif self.__req_uri.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters (everything after ?)
             self.wfile.write(self.__assemble_response(
                 'HTTP/1.1 200 Server Stopped',
                 f'Server: {type(self).__name__}',
@@ -191,31 +232,36 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
     def __handle_CONNECT(self):
         """Handle CONNECT requests"""
-        self.handle_unsupported_method()
+        self.__handle_unsupported_method()
 
     def __handle_DELETE(self):
         """Handle DELETE requests"""
-        self.handle_unsupported_method()
+        self.__handle_unsupported_method()
 
     def __handle_HEAD(self):
         """Handle HEAD requests"""
-        self.handle_unsupported_method()
+        self.__handle_unsupported_method()
 
     def __handle_OPTIONS(self):
         """Handle OPTIONS requests"""
-        self.handle_unsupported_method()
+        self.__handle_unsupported_method()
 
     def __handle_PATCH(self):
         """Handle PATCH requests"""
-        self.handle_unsupported_method()
+        self.__handle_unsupported_method()
 
     def __handle_PUT(self):
         """Handle PUT requests"""
-        self.handle_unsupported_method()
+        self.__handle_unsupported_method()
 
     def __handle_TRACE(self):
         """Handle TRACE requests"""
-        self.handle_unsupported_method()
+        self.__response_set_header(':', b'200 OK')
+        self.__response_set_header('Server', type(self).__name__)
+        self.__response_set_header('Content-type', 'message/http')
+        self.__response_set_header('Content-length', str(len(self.__req_data)))
+        self.__response_data['body'] = self.__req_data
+        self.__response_send()
 
 def init_server(req_handler, addr:str='localhost', port:int=8080, enable_ssl:bool=True, sslhostname:str|None='localhost', certfile:str|None='certfile.crt', keyfile:str|None='keyfile.key', certpass:str|None=None):
     with socketserver.ThreadingTCPServer((addr, port), req_handler, bind_and_activate=False) as server:
@@ -237,5 +283,5 @@ if __name__ == '__main__':
         description='A simple, dumb HTTP server written in Python3.',
         epilog='L2HTTPServ is NOT production ready, keep that in mind. It\'s only intended to be used as a base class for custom HTTP servers like shown in the /examples directory in the GIT project.'
     )
-    argparser.add_argument('-s', '--ssl', action='store_true')
+    argparser.add_argument('-s', '--ssl', action='store_true', help="Encrypt the connections with SSL ('certfile.crt' and 'keyfile.key' must be present in working dir)")
     init_server(L2HTTPServ, enable_ssl=(argparser.parse_args().ssl))
