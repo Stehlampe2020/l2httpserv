@@ -14,7 +14,14 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
 
     __debug:bool = False # If this is enabled, a lot more information about the received requests will be printed to the console.
     _l2_req_id:int = 0
-    __implemented_methods:tuple[str, ...] = 'GET,POST'.split(',')
+    __implemented_methods:tuple[str, ...] = property((lambda:'GET,POST'.split(','))) # Make it read-only
+    __req_enc:str = 'ASCII'
+    __req_data:bytes = b''
+    __req_type:str = 'GET'
+    __req_ver:str = 'HTTP/1.1'
+    __req_uri:str = '/'
+    __req_path:str = '/'
+    __req_GET_params:dict[str, str] = {}
 
     def __init__(self, *args, **kwargs):
         """Initialize the L2HTTPServ request"""
@@ -166,7 +173,17 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             else:
                 return print(f'Incoming request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n -> Header: {self.__req_data}')
 
-        print(f'Incoming {self.__req_ver} request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: {self.__req_type} {self.__req_uri}')
+        req_uri_parts:tuple[str, ...] = self.__req_uri.split('?', 1)
+        self.__req_path = req_uri_parts[0]
+
+        if len(req_uri_parts)==2:
+            self.__req_GET_params = {
+                param.split('=', 1)[0]:param.split('=', 1)[1]
+                for param in req_uri_parts[1].split('&')
+                if '=' in param # Note that we lose all valueless GET parametres here. If we really care about those we can still extract them from the URI if we want, but normally valueless GET params should still have the = sign which causes the value to be empty but exist.
+            }
+
+        print(f'Incoming {self.__req_ver} request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: {self.__req_type} {self.__req_path} +{len(self.__req_GET_params)} GET param{"" if len(self.__req_GET_params)==1 else "s"}')
 
         while not self.__req_data.endswith(HTTP_LINE_BREAK * 2): # Read all headers (separated by an empty line from the content)
             self.__req_data += self.rfile.readline()
@@ -251,7 +268,7 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
                 self.__response_http_status(404)
                 self.__response_data['body'] = b'The favicon could unfortunately not be loaded.'
                 return
-        elif self.__req_uri.split('?', 1)[0] == '/.__l2httpserv.stop': # Ignore GET parameters (everything after ?)
+        elif self.__req_path == '/.__l2httpserv.stop':
             self.__response_http_status(200, 'Server Stopped')
             self.__response_set_header('Content-type', 'text/plain; charset=utf-8') # Somehow this header is not reset foreach new request?
             self.__response_data['body'] = b'Stopped the server!'
