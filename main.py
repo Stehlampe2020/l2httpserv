@@ -256,8 +256,8 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             self.__response_set_header('Content-type', 'text/plain; charset=utf-8') # Somehow this header is not reset foreach new request?
             self.__response_data['body'] = b'Stopped the server!'
             self.__response_send()
-            print(f'{self.client_address[0]} requested to stop the server!\nShutting down server...')
-            self.server.shutdown()
+            print(f'{self.client_address[0]} requested to stop the server!')
+            self.__stop_server()
             return
 
         self.__response_http_status(200)
@@ -325,6 +325,12 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         self.__response_set_header('Content-length', str(len(self.__req_data)))
         self.__response_data['body'] = self.__req_data
         self.__response_send()
+
+    def __stop_server(self):
+        """Gracefully shuts down the server"""
+        print(f'Shutting down {repr(type(self).__name__)} server...', end=' ')
+        self.server.shutdown()
+        print('Done!')
 
 def init_server(req_handler, addr:str='localhost', port:int=8080, enable_ssl:bool=True, sslhostname:str|None='localhost', certfile:str|None='certfile.crt', keyfile:str|None='keyfile.key', certpass:str|None=None):
     with socketserver.ThreadingTCPServer((addr, port), req_handler, bind_and_activate=False) as server:
