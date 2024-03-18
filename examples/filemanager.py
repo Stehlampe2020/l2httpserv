@@ -8,7 +8,6 @@ class HTTPFileManager(main.L2HTTPServ):
     _implemented_methods:tuple[str, ...] = property( # Make this read-only by only supplying a getter
         (lambda: 'DELETE,GET,HEAD,POST,PUT,TRACE'.split(','))
     )
-    _debug:bool = True
 
     def __init__(self, *args, **kwargs):
         """Initialize the request handler"""

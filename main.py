@@ -12,7 +12,7 @@ true:bool = True
 class L2HTTPServ(socketserver.StreamRequestHandler):
     """Basic HTTP request handler"""
 
-    _debug:bool = True # If this is enabled, a lot more information about the received requests will be printed to the console.
+    _debug:bool = False # If this is enabled, a lot more information about the received requests will be printed to the console.
     _l2_req_id:int = 0
     _implemented_methods:tuple[str, ...] = property( # Make this read-only by only supporting a getter
         (lambda: 'GET,POST'.split(','))
