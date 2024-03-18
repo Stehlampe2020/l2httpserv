@@ -12,23 +12,25 @@ true:bool = True
 class L2HTTPServ(socketserver.StreamRequestHandler):
     """Basic HTTP request handler"""
 
-    __debug:bool = False # If this is enabled, a lot more information about the received requests will be printed to the console.
+    _debug:bool = True # If this is enabled, a lot more information about the received requests will be printed to the console.
     _l2_req_id:int = 0
-    __implemented_methods:tuple[str, ...] = property((lambda:'GET,POST'.split(','))) # Make it read-only
-    __req_enc:str = 'ASCII'
-    __req_data:bytes = b''
-    __req_type:str = 'GET'
-    __req_ver:str = 'HTTP/1.1'
-    __req_uri:str = '/'
-    __req_path:str = '/'
-    __req_GET_params:dict[str, str] = {}
+    _implemented_methods:tuple[str, ...] = property( # Make this read-only by only supporting a getter
+        (lambda: 'GET,POST'.split(','))
+    )
+    _req_enc:str = 'ASCII'
+    _req_data:bytes = b''
+    _req_type:str = 'GET'
+    _req_ver:str = 'HTTP/1.1'
+    _req_uri:str = '/'
+    _req_path:str = '/'
+    _req_GET_params:dict[str, str] = {}
 
     def __init__(self, *args, **kwargs):
         """Initialize the L2HTTPServ request"""
         super().__init__(*args, **kwargs)
         type(self)._l2_req_id += 1
 
-    __response_data:dict[str, bytes|dict[bytes, bytes]] = {
+    _response_data:dict[str, bytes | dict[bytes, bytes]] = {
         'head': b'HTTP/1.1 200 OK',
         'headers': {
             b'Server': b'L2HTTPServ',
@@ -37,31 +39,32 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         'body': b''
     }
 
-    def __response_send(self):
-        """Sends the response that has been built in self.__response_data"""
-        response:bytes = self.__assemble_response(
-            self.__response_data['head'],
-            *(hname+b': '+self.__response_data['headers'][hname] for hname in self.__response_data['headers']),
+    def _response_send(self):
+        """Sends the response that has been built in self._response_data"""
+        response:bytes = self._assemble_response(
+            self._response_data['head'],
+            *(hname + b': ' + self._response_data['headers'][hname] for hname in
+              self._response_data['headers']),
             '',
-            self.__response_data['body']
+            self._response_data['body']
         )
-        if self.__debug: print(f'Responding to request#{self._l2_req_id}: {response}')
+        if self._debug: print(f'Responding to request#{self._l2_req_id}: {response}')
         self.wfile.write(response)
 
-    def __response_set_header(self, hname:str|bytes, hcont:str|bytes):
+    def _response_set_header(self, hname:str|bytes, hcont:str|bytes):
         """Set a header's value"""
         if hname in (':',b':'):
-            self.__response_data['head'] = hcont if type(hcont)==bytes else hcont.encode('ASCII')
-            if not re.match(b'HTTP\/[0-9]*\.[0-9]* [0-9]{3} .*', self.__response_data['head']):
-                self.__response_data['head'] = b'HTTP/1.1 '+self.__response_data['head']
+            self._response_data['head'] = hcont if type(hcont) == bytes else hcont.encode('ASCII')
+            if not re.match(b'HTTP\/[0-9]*\.[0-9]* [0-9]{3} .*', self._response_data['head']):
+                self._response_data['head'] = b'HTTP/1.1 ' + self._response_data['head']
         else:
             if type(hname)==str:
                 hname = hname.encode('ASCII')
             if type(hcont)==str:
                 hcont = hcont.encode('UTF-8')
-            self.__response_data['headers'][hname] = hcont
+            self._response_data['headers'][hname] = hcont
 
-    def __response_http_status(self, status:int, msg:str|None=None):
+    def _response_http_status(self, status:int, msg:str|None=None):
         """Set the response's HTTP ststus code"""
         status_msgs:dict[int, str] = { # Messages according to https://developer.mozilla.org/en-US/docs/Web/HTTP/Status
             # Information responses
@@ -136,12 +139,13 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
         def require_http_status_msg(status:int):
             """Raises an error to notify the calling code that a ststus message is needed for the given status code."""
             raise ValueError(f'No message defined for HTTP response code {status}!')
-        self.__response_set_header(
+
+        self._response_set_header(
             ':',
             f'{status} {msg or (status_msgs[status] if status in status_msgs else require_http_status_msg(status))}'
         )
 
-    def __assemble_response(self, *lines:bytes|str):
+    def _assemble_response(self, *lines:bytes|str):
         """Assembles the given lines with HTTP line breaks"""
         return HTTP_LINE_BREAK.join(
             (
@@ -152,135 +156,139 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             for line in lines               # Do this for every given line.
         )+HTTP_LINE_BREAK                   # Add an HTTP line break at the end.
 
-    def handle(self):
+    def prehandle(self):
         """Base handler method"""
         #self.server.socket.accept()
 
-        self.__req_enc:str = 'ASCII' # May be overridden by the client
+        self._req_enc:str = 'ASCII' # May be overridden by the client
 
-        self.__req_data:bytes = self.rfile.readline()
+        self._req_data:bytes = self.rfile.readline()
 
         try:
-            self.__req_type, self.__req_uri, self.__req_ver = self.__req_data.split(HTTP_LINE_BREAK, 1)[0].decode('ascii').split(' ')
-            if not re.fullmatch(r'^HTTP\/[0-9]*\.[0-9]*$', self.__req_ver):
+            self._req_type, self._req_uri, self._req_ver = self._req_data.split(HTTP_LINE_BREAK, 1)[0].decode('ascii').split(' ')
+            if not re.fullmatch(r'^HTTP\/[0-9]*\.[0-9]*$', self._req_ver):
                 raise ValueError('Not an HTTP request!')
         except ValueError:
-            self.__response_http_status(400)
-            self.__response_data['body'] = b'L2HTTPServ cannot handle non-HTTP requests! (as the name implies)'
-            self.__response_send()
-            if self.__req_data==b'':
+            self._response_http_status(400)
+            self._response_data['body'] = b'L2HTTPServ cannot handle non-HTTP requests! (as the name implies)'
+            self._response_send()
+            if self._req_data== b'':
                 return print(f'Incoming empty request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}; probably an unused predicted connection.')
             else:
-                return print(f'Incoming request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n -> Header: {self.__req_data}')
+                return print(f'Incoming request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: Bad header!\n -> Header: {self._req_data}')
 
-        req_uri_parts:tuple[str, ...] = self.__req_uri.split('?', 1)
-        self.__req_path = req_uri_parts[0]
+        req_uri_parts:tuple[str, ...] = self._req_uri.split('?', 1)
+        self._req_path = req_uri_parts[0]
 
         if len(req_uri_parts)==2:
-            self.__req_GET_params = {
+            self._req_GET_params = {
                 param.split('=', 1)[0]:param.split('=', 1)[1]
                 for param in req_uri_parts[1].split('&')
                 if '=' in param # Note that we lose all valueless GET parametres here. If we really care about those we can still extract them from the URI if we want, but normally valueless GET params should still have the = sign which causes the value to be empty but exist.
             }
 
-        print(f'Incoming {self.__req_ver} request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: {self.__req_type} {self.__req_path} +{len(self.__req_GET_params)} GET param{"" if len(self.__req_GET_params)==1 else "s"}')
+        print(f'Incoming {self._req_ver} request (#{self._l2_req_id}) from {self.client_address[0]}:{self.client_address[1]}: {self._req_type} {self._req_path} +{len(self._req_GET_params)} GET param{"" if len(self._req_GET_params) == 1 else "s"}')
 
-        while not self.__req_data.endswith(HTTP_LINE_BREAK * 2): # Read all headers (separated by an empty line from the content)
-            self.__req_data += self.rfile.readline()
+        while not self._req_data.endswith(HTTP_LINE_BREAK * 2): # Read all headers (separated by an empty line from the content)
+            self._req_data += self.rfile.readline()
 
-        #for line in self.__req_data.split(HTTP_LINE_BREAK)[1:]: # Exclude the first line
+        #for line in self._req_data.split(HTTP_LINE_BREAK)[1:]: # Exclude the first line
         raw_headers:dict[str, bytes] = {
-            line.split(b': ', 1)[0].decode(self.__req_enc):
+            line.split(b': ', 1)[0].decode(self._req_enc):
                 line.split(b': ', 1)[1]
-            for line in self.__req_data.split(HTTP_LINE_BREAK)[1:]
+            for line in self._req_data.split(HTTP_LINE_BREAK)[1:]
             if line
         }
 
-        if self.__debug: print(f' -> (#{self._l2_req_id}) {self.__req_data=}\n -> (#{self._l2_req_id}) {raw_headers=}') #debug
+        if self._debug: print(f' -> (#{self._l2_req_id}) {self._req_data=}\n -> (#{self._l2_req_id}) {raw_headers=}') #debug
 
         self.__req_headers:dict[str, str] = {}
         for header in raw_headers:
             if header.lower()=='content-type':
                 enc_match:re.Match = re.search(r'charset=([^\s;]+)', raw_headers[header], re.IGNORECASE)
                 if enc_match:
-                    self.__req_enc = enc_match.group(1) or 'ASCII' # In case a falsey value is returned, set the encoding back to ASCII
-            self.__req_headers[header.lower()] = raw_headers[header].decode(self.__req_enc)
+                    self._req_enc = enc_match.group(1) or 'ASCII' # In case a falsey value is returned, set the encoding back to ASCII
+            self.__req_headers[header.lower()] = raw_headers[header].decode(self._req_enc)
 
-        if self.__debug: print(f' -> (#{self._l2_req_id}) {self.__req_headers=}') #debug
+        if self._debug: print(f' -> (#{self._l2_req_id}) {self.__req_headers=}') #debug
 
         if 'content-length' in self.__req_headers:
             self.__req_body:bytes = self.rfile.read(int(self.__req_headers['content-length']))
-            self.__req_data += self.__req_body
+            self._req_data += self.__req_body
         else:
             self.__req_body:bytes = b''
 
-        if self.__debug: print(f' -> (#{self._l2_req_id}) {self.__req_body=}') #debug
+        if self._debug: print(f' -> (#{self._l2_req_id}) {self.__req_body=}') #debug
 
-        match self.__req_type:
+    def handle(self):
+        self.prehandle()
+
+        match self._req_type:
             # The two most common ones are checked first to reduce computation time
             case 'GET':
-                self.__handle_GET()
+                self._handle_GET()
             case 'POST':
-                self.__handle_POST()
+                self._handle_POST()
             # The rest of them are checked in alphabetical order
             case 'CONNECT':
-                self.__handle_CONNECT()
+                self._handle_CONNECT()
             case 'DELETE':
-                self.__handle_DELETE()
+                self._handle_DELETE()
             case 'HEAD':
-                self.__handle_HEAD()
+                self._handle_HEAD()
             case 'OPTIONS':
-                self.__handle_OPTIONS()
+                self._handle_OPTIONS()
             case 'PATCH':
-                self.__handle_PATCH()
+                self._handle_PATCH()
             case 'PUT':
-                self.__handle_PUT()
+                self._handle_PUT()
             case 'TRACE':
-                self.__handle_TRACE()
+                self._handle_TRACE()
             # In case none of the above methods is used:
             case method:
-                if method in self.__implemented_methods:
+                if method in self._implemented_methods:
                     try:
                         self[f'__handle_{method}']()
                     except:
-                        self.__handle_unsupported_method()
+                        self._handle_unsupported_method()
                 else:
-                    self.__handle_unsupported_method()
+                    self._handle_unsupported_method()
 
-    def __handle_unsupported_method(self):
+    def _handle_unsupported_method(self):
         """Handle requests with an unsupported method"""
-        self.__response_http_status(405)
-        self.__response_set_header('Allow', ', '.join(self.__implemented_methods))
-        self.__response_data['body'] = f'This server does not support {self.__req_type} requests!'
-        self.__response_send()
+        self._response_http_status(405)
+        self._response_set_header('Allow', ', '.join(self._implemented_methods))
+        self._response_data['body'] = f'This server does not support {self._req_type} requests!'
+        self._response_send()
 
-    def __handle_GET(self):
+    def _handle_GET(self):
         """Handle GET requests"""
 
-        if self.__req_uri == '/favicon.ico':
+        if self._req_uri == '/favicon.ico':
             try:
                 with open('favicon.ico', 'rb') as favicon:
-                    self.__response_data['body'] = favicon.read()
-                    self.__response_set_header('Content-type', b'image/vnd.microsoft.icon')
-                    self.__response_send()
+                    self._response_data['body'] = favicon.read()
+                    self._response_set_header('Content-type', b'image/vnd.microsoft.icon')
+                    self._response_send()
                     return
             except OSError:
-                self.__response_http_status(404)
-                self.__response_data['body'] = b'The favicon could unfortunately not be loaded.'
+                self._response_http_status(404)
+                self._response_data['body'] = b'The favicon could unfortunately not be loaded.'
                 return
-        elif self.__req_path == '/.__l2httpserv.stop':
-            self.__response_http_status(200, 'Server Stopped')
-            self.__response_set_header('Content-type', 'text/plain; charset=utf-8') # Somehow this header is not reset foreach new request?
-            self.__response_data['body'] = b'Stopped the server!'
-            self.__response_send()
+        elif self._req_path == '/.__l2httpserv.stop':
+            self._response_http_status(200, 'Server Stopped')
+            self._response_set_header('Content-type',
+                                      'text/plain; charset=utf-8')  # Somehow this header is not reset foreach new request?
+            self._response_data['body'] = b'Stopped the server!'
+            self._response_send()
             print(f'{self.client_address[0]} requested to stop the server!')
-            self.__stop_server()
+            self._stop_server()
             return
 
-        self.__response_http_status(200)
-        self.__response_set_header('Server', type(self).__name__)
-        self.__response_set_header('Content-type', b'text/html; charset=utf-8')
-        self.__response_data['body'] = """<!DOCTYPE html>
+        self._response_http_status(200)
+        self._response_set_header('Server', type(self).__name__)
+        self._response_set_header('Content-type', b'text/html; charset=utf-8')
+        self._response_data['body'] = """<!DOCTYPE html>
         <html>
             <head lang="en">
                 <link rel="icon" href="/favicon.ico">
@@ -302,48 +310,48 @@ class L2HTTPServ(socketserver.StreamRequestHandler):
             </body>
         </html>""".replace("""
         """, '\n') # Remove the extra indent depth.
-        self.__response_set_header('Content-length', str(len(self.__response_data['body'])))
-        self.__response_send()
+        self._response_set_header('Content-length', str(len(self._response_data['body'])))
+        self._response_send()
 
-    def __handle_POST(self):
+    def _handle_POST(self):
         """Handle POST requests"""
 
-        self.__handle_GET() # The base server doesn't need to respond differently to POST requests than to GET requests, so literally just respond as if it was a GET request.
+        self._handle_GET()  # The base server doesn't need to respond differently to POST requests than to GET requests, so literally just respond as if it was a GET request.
 
-    def __handle_CONNECT(self):
+    def _handle_CONNECT(self):
         """Handle CONNECT requests"""
-        self.__handle_unsupported_method()
+        self._handle_unsupported_method()
 
-    def __handle_DELETE(self):
+    def _handle_DELETE(self):
         """Handle DELETE requests"""
-        self.__handle_unsupported_method()
+        self._handle_unsupported_method()
 
-    def __handle_HEAD(self):
+    def _handle_HEAD(self):
         """Handle HEAD requests"""
-        self.__handle_unsupported_method()
+        self._handle_unsupported_method()
 
-    def __handle_OPTIONS(self):
+    def _handle_OPTIONS(self):
         """Handle OPTIONS requests"""
-        self.__handle_unsupported_method()
+        self._handle_unsupported_method()
 
-    def __handle_PATCH(self):
+    def _handle_PATCH(self):
         """Handle PATCH requests"""
-        self.__handle_unsupported_method()
+        self._handle_unsupported_method()
 
-    def __handle_PUT(self):
+    def _handle_PUT(self):
         """Handle PUT requests"""
-        self.__handle_unsupported_method()
+        self._handle_unsupported_method()
 
-    def __handle_TRACE(self):
+    def _handle_TRACE(self):
         """Handle TRACE requests"""
-        self.__response_http_status(200)
-        self.__response_set_header('Server', type(self).__name__)
-        self.__response_set_header('Content-type', 'message/http')
-        self.__response_set_header('Content-length', str(len(self.__req_data)))
-        self.__response_data['body'] = self.__req_data
-        self.__response_send()
+        self._response_http_status(200)
+        self._response_set_header('Server', type(self).__name__)
+        self._response_set_header('Content-type', 'message/http')
+        self._response_set_header('Content-length', str(len(self._req_data)))
+        self._response_data['body'] = self._req_data
+        self._response_send()
 
-    def __stop_server(self):
+    def _stop_server(self):
         """Gracefully shuts down the server"""
         print(f'Shutting down {repr(type(self).__name__)} server...', end=' ')
         self.server.shutdown()
